@@ -64,3 +64,23 @@ def test_corrupt_file_raises_rather_than_silently_emptying(tmp_path):
         assert "acme_east.json" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_non_integer_value_raises_with_path(tmp_path):
+    (tmp_path / "acme_east.json").write_text('{"yelp": "not-a-number"}')
+    try:
+        AliasStore.load("acme_east", tmp_path)
+    except ValueError as exc:
+        assert "acme_east.json" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_null_value_raises_with_path(tmp_path):
+    (tmp_path / "acme_east.json").write_text('{"yelp": null}')
+    try:
+        AliasStore.load("acme_east", tmp_path)
+    except ValueError as exc:
+        assert "acme_east.json" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

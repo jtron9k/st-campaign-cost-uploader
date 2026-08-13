@@ -32,7 +32,12 @@ class AliasStore:
             # TRY004 wants TypeError, but this is malformed file content, not a
             # bad argument from a caller. ValueError is the accurate exception.
             raise ValueError(f"{path} must contain a JSON object")  # noqa: TRY004
-        return cls(path, {str(k): int(v) for k, v in payload.items()})
+        try:
+            return cls(path, {str(k): int(v) for k, v in payload.items()})
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{path} contains a non-integer campaign id: {exc}"
+            ) from exc
 
     def get(self, sheet_name: str) -> int | None:
         return self._mapping.get(normalize_name(sheet_name))
