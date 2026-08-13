@@ -51,7 +51,18 @@ So for every `(campaign, year, month)` the tool must look up an existing record 
 
 Both operations exist in the Marketing v2 API (`create` and `update` on costs). The create body is `{campaignId, year, month, dailyCost}`.
 
-`GET /marketing/v2/tenant/{tenant_id}/costs/{id}` returns a single record (verified 2026-08-12), so the single-cost resource path exists. The **update verb is still unconfirmed**. Convention across ServiceTitan's v2 API plus that resource path both point to `PATCH /marketing/v2/tenant/{tenant_id}/costs/{id}`, but confirming it requires an actual write. The developer portal is an authenticated single-page app and returns no readable content to an unauthenticated fetch, so it cannot settle this. Confirm with one supervised write against a campaign-month currently reading `0.0`, then re-read and restore.
+`GET /marketing/v2/tenant/{tenant_id}/costs/{id}` returns a single record (verified 2026-08-12).
+
+The update verb is **`PATCH /marketing/v2/tenant/{tenant_id}/costs/{id}`** (verified 2026-08-12 against tenant `acme_east`, cost record `500000001`, with Justin's approval; the record was restored to its prior `0.0` afterward).
+
+What the supervised write established:
+
+- **Body:** a partial body of just `{"dailyCost": <number>}` is accepted. `campaignId`, `year`, and `month` do **not** need to be resent.
+- **Response:** HTTP 200 with `{"id": 500000001}`. The body carries the id only, not the updated record.
+- **It updates in place.** The re-read returned the same `id`, and `year`, `month`, and `campaignId` were unchanged. No new row was created.
+- **Round trip:** `{"dailyCost": 1.23}` read back as `1.23`; `{"dailyCost": 0}` read back as `0.0`.
+
+Send only `dailyCost` on update. Resending `campaignId`/`year`/`month` in a PATCH is untested, and those fields identify the record, so a rejected or re-keyed write is a real risk for no benefit. The full `{campaignId, year, month, dailyCost}` body belongs to **create** (`POST /costs`), where it is required.
 
 ### Campaigns and matching
 
