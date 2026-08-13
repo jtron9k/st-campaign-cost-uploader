@@ -29,7 +29,9 @@ class AliasStore:
         except json.JSONDecodeError as exc:
             raise ValueError(f"{path} is not valid JSON: {exc}") from exc
         if not isinstance(payload, dict):
-            raise ValueError(f"{path} must contain a JSON object")
+            # TRY004 wants TypeError, but this is malformed file content, not a
+            # bad argument from a caller. ValueError is the accurate exception.
+            raise ValueError(f"{path} must contain a JSON object")  # noqa: TRY004
         return cls(path, {str(k): int(v) for k, v in payload.items()})
 
     def get(self, sheet_name: str) -> int | None:

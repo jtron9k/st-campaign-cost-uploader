@@ -11,7 +11,7 @@ def test_normalize_lowercases_and_collapses_whitespace():
 
 
 def test_normalize_handles_non_breaking_space():
-    assert normalize_name("Google Ads") == "google ads"
+    assert normalize_name("Google\xa0Ads") == "google ads"
 
 
 def test_load_creates_empty_store_when_file_absent(tmp_path):
