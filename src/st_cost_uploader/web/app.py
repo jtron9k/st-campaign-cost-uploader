@@ -174,26 +174,26 @@ async def confirm_choices(request: Request, session_id: str) -> HTMLResponse:
     by_id = {c.id: c for c in session.campaigns}
 
     for key, value in form.items():
-        if not key.startswith("choice_"):
+        if not key.startswith("choice_") or value == "skip":
+            # A skip is a no-op: whatever the resolver produced for this
+            # row (including a FUZZY resolution's candidates) is left
+            # exactly as-is, so a declined suggestion still carries the
+            # "we suggested X, operator declined" information forward.
+            # It is never recorded as an alias.
             continue
-        index = int(key.removeprefix("choice_"))
+        try:
+            index = int(key.removeprefix("choice_"))
+            campaign_id = int(value)
+        except ValueError:
+            # A malformed key or value (hand-crafted or corrupted POST)
+            # must not 500 and must not abort the rest of the submission.
+            continue
         if index < 0 or index >= len(session.resolutions):
             continue
-        current = session.resolutions[index]
-
-        if value == "skip":
-            # A chosen skip, not a no-op: it must force the row to
-            # unresolved (even one that auto-resolved exact/alias) so it
-            # lands in the unmatched CSV, and it must never be recorded
-            # as an alias.
-            session.resolutions[index] = Resolution(
-                row=current.row, kind=MatchKind.NONE, campaign_id=None, campaign_name=None
-            )
-            continue
-
-        campaign = by_id.get(int(value))
+        campaign = by_id.get(campaign_id)
         if campaign is None:
             continue
+        current = session.resolutions[index]
         session.resolutions[index] = Resolution(
             row=current.row,
             kind=MatchKind.ALIAS,

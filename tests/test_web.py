@@ -207,11 +207,43 @@ def test_confirming_a_choice_saves_an_alias(client, fake_st, tmp_path):
 
 
 def test_skipping_a_row_leaves_it_unresolved(client, fake_st):
-    sid = _start(client)
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Campaign", "Month", "Spend"])
+    ws.append(["Facebook Retarget", "2026-02", "2400.00"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    client.post(
+        "/upload",
+        data={"tenant": "acme_east"},
+        files={"file": ("s.xlsx", buf.getvalue(), "application/octet-stream")},
+    )
+    sid = next(iter(SESSIONS))
     client.post(f"/resolve/{sid}")
+
+    before = SESSIONS[sid].resolutions[0]
+    assert before.kind.value == "fuzzy"
+    assert before.is_resolved is False
+    assert before.candidates
+
     client.post(f"/confirm/{sid}", data={"choice_0": "skip"})
 
-    assert SESSIONS[sid].resolutions[0].is_resolved is False
+    after = SESSIONS[sid].resolutions[0]
+    assert after.is_resolved is False
+    assert after.candidates == before.candidates
+
+
+def test_confirm_ignores_a_malformed_choice_without_500(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+
+    response = client.post(
+        f"/confirm/{sid}", data={"choice_x": "2", "choice_0": "abc"}
+    )
+
+    assert response.status_code == 200
+    assert SESSIONS[sid].resolutions[0].campaign_id == 1
 
 
 def test_unknown_session_returns_404(client, fake_st):
