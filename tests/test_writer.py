@@ -121,3 +121,50 @@ async def test_empty_plan_is_a_no_op(tmp_path):
     path = tmp_path / "w.jsonl"
     assert await execute([], FakeClient(), AuditLog(path), "t") == []
     assert not path.exists()
+
+
+async def test_a_create_keeps_the_id_servicetitan_assigned(tmp_path):
+    """Verified live 2026-08-13: a create really does mint a new record id
+    (campaign 1000002, 2026-12 -> 500000005). Discarding it left the audit
+    log with a null cost_id for exactly the rows whose id is not knowable
+    from the plan, so a created record could not be traced or reversed from
+    the log alone."""
+    client = FakeClient()
+
+    outcomes = await execute([_plan()], client, AuditLog(tmp_path / "w.jsonl"), "t")
+
+    assert outcomes[0].created_cost_id == 999
+
+
+async def test_an_update_has_no_created_id(tmp_path):
+    client = FakeClient()
+
+    outcomes = await execute(
+        [_plan(action=Action.UPDATE, cost_id=77)],
+        client, AuditLog(tmp_path / "w.jsonl"), "t",
+    )
+
+    assert outcomes[0].created_cost_id is None
+
+
+async def test_a_create_that_returns_no_id_records_none_not_zero(tmp_path):
+    """client.create_cost returns 0 for "no id in the response", never for a
+    failure. Recording that 0 verbatim would read as a real record id."""
+    class Idless(FakeClient):
+        async def create_cost(self, campaign_id, year, month, daily_cost):
+            await super().create_cost(campaign_id, year, month, daily_cost)
+            return 0
+
+    outcomes = await execute([_plan()], Idless(), AuditLog(tmp_path / "w.jsonl"), "t")
+
+    assert outcomes[0].ok is True
+    assert outcomes[0].created_cost_id is None
+
+
+async def test_a_failed_create_records_no_id(tmp_path):
+    client = FakeClient(fail_on={3})
+
+    outcomes = await execute([_plan()], client, AuditLog(tmp_path / "w.jsonl"), "t")
+
+    assert outcomes[0].ok is False
+    assert outcomes[0].created_cost_id is None

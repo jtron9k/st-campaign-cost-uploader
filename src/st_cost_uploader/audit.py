@@ -44,7 +44,10 @@ class AuditLog:
             "year": plan.year,
             "month": plan.month,
             "action": plan.action.value,
-            "cost_id": plan.cost_id,
+            # For an UPDATE this is the record the plan targeted; for a
+            # CREATE it is the id ServiceTitan minted, which only the write
+            # itself can supply.
+            "cost_id": outcome.cost_id,
             "monthly_total": str(plan.conversion.monthly_total),
             "prior_daily_cost": None if prior is None else str(prior),
             "new_daily_cost": str(plan.conversion.daily_cost),

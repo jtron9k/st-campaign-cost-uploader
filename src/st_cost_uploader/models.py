@@ -126,3 +126,13 @@ class WriteOutcome:
     plan: PlannedWrite
     ok: bool
     error: str | None = None
+    # Set only for a successful CREATE, and only when ServiceTitan returned
+    # an id. A created record's id cannot come from the plan, which was
+    # built before the record existed, so this is the sole route by which
+    # the audit log can name the row it just made.
+    created_cost_id: int | None = None
+
+    @property
+    def cost_id(self) -> int | None:
+        """The record this write touched, whichever way it got there."""
+        return self.created_cost_id if self.plan.action is Action.CREATE else self.plan.cost_id

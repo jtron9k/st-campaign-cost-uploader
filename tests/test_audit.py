@@ -10,7 +10,9 @@ from st_cost_uploader.models import (
 )
 
 
-def _outcome(ok=True, error=None, action=Action.UPDATE, prior="50.00") -> WriteOutcome:
+def _outcome(
+    ok=True, error=None, action=Action.UPDATE, prior="50.00", created_cost_id=None
+) -> WriteOutcome:
     conv = CostConversion(
         monthly_total=Decimal("1860.00"), days_in_month=31,
         daily_cost=Decimal("60.00"), reconstructed_total=Decimal("1860.00"),
@@ -19,9 +21,10 @@ def _outcome(ok=True, error=None, action=Action.UPDATE, prior="50.00") -> WriteO
     plan = PlannedWrite(
         campaign_id=3, campaign_name="Yelp", sheet_name="Yelp Ads",
         year=2026, month=3, action=action, conversion=conv,
-        cost_id=77, prior_daily_cost=Decimal(prior) if prior else None,
+        cost_id=None if action is Action.CREATE else 77,
+        prior_daily_cost=Decimal(prior) if prior else None,
     )
-    return WriteOutcome(plan=plan, ok=ok, error=error)
+    return WriteOutcome(plan=plan, ok=ok, error=error, created_cost_id=created_cost_id)
 
 
 def test_record_writes_one_json_line(tmp_path):
@@ -87,6 +90,33 @@ def test_create_records_a_null_prior(tmp_path):
     entry = json.loads((tmp_path / "writes.jsonl").read_text().strip())
     assert entry["action"] == "create"
     assert entry["prior_daily_cost"] is None
+
+
+def test_a_create_logs_the_id_servicetitan_assigned(tmp_path):
+    """A create's cost_id cannot come from the plan -- the record did not
+    exist when the plan was built. It has to come from the write's own
+    response, or the log cannot name the row it just created."""
+    log = AuditLog(tmp_path / "writes.jsonl")
+    log.record("t", _outcome(action=Action.CREATE, prior=None, created_cost_id=500000005))
+
+    entry = json.loads((tmp_path / "writes.jsonl").read_text().strip())
+    assert entry["cost_id"] == 500000005
+
+
+def test_a_create_with_no_returned_id_logs_null(tmp_path):
+    log = AuditLog(tmp_path / "writes.jsonl")
+    log.record("t", _outcome(action=Action.CREATE, prior=None))
+
+    entry = json.loads((tmp_path / "writes.jsonl").read_text().strip())
+    assert entry["cost_id"] is None
+
+
+def test_an_update_logs_the_record_it_targeted(tmp_path):
+    log = AuditLog(tmp_path / "writes.jsonl")
+    log.record("t", _outcome())
+
+    entry = json.loads((tmp_path / "writes.jsonl").read_text().strip())
+    assert entry["cost_id"] == 77
 
 
 def test_timestamp_is_utc_iso8601(tmp_path):

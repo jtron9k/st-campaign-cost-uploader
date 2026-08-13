@@ -49,6 +49,14 @@ ServiceTitan does **not** pre-create cost rows for every campaign. This is confi
 
 Consequence for testing: **campaign `1000001` cannot exercise the CREATE path.** Every month it could be pointed at already has a record, so the planner will choose UPDATE every time. Settling whether `POST /costs` behaves as assumed needs a campaign-month with no record &mdash; `1000002` is the known one.
 
+**`POST /costs` is now verified (2026-08-13).** A supervised end-to-end run against `acme_east`, with Justin's approval, created a record for campaign `1000002` ("Google") at 2026-12 with `dailyCost` 80.65. Read back through `scripts/st_probe.py`, it returned as a real record with a newly minted id, `500000005`. So:
+
+- Create genuinely mints a record where none existed; the upsert model is correct.
+- The created record was afterwards set to `0.0` through the app. **It cannot be removed** &mdash; neither the Marketing v2 API nor `client.py` exposes a delete for cost records. Campaign `1000002` therefore now has exactly one cost record (2026-12 at `0.0`), where it previously had none. Any future test of the CREATE path against this campaign must pick a different month.
+- **The POST response body carries no id (verified 2026-08-13).** A second supervised create, campaign `1000002` at 2026-11, logged `"cost_id": null` in `logs/writes.jsonl` while a follow-up read showed the record had really been created as `500000004`. The writer captures whatever `create_cost` returns, and `_request` parses any non-empty body, so a `null` here means the response genuinely does not name the record. This is the opposite of `PATCH`, whose response is `{"id": ...}`.
+- **To learn a created record's id, re-read the campaign's costs and match on `(year, month)`.** Do not build a follow-up request path out of `create_cost`'s return value; it is always `0` in practice.
+- Campaign `1000002` now holds two cost records, 2026-11 and 2026-12, both restored to `0.0`. A third CREATE test against it needs a third month.
+
 The record ids also arrive in three contiguous blocks (`500000001`+ for 2022-2024, `500000002`+ for 2025, `500000003`+ for 2026), which suggests ServiceTitan bulk-creates a year of rows at a time. Do not depend on that; it is an observation, not a documented guarantee.
 
 So for every `(campaign, year, month)` the tool must look up an existing record and update it, or create one when absent. Blind creates risk duplicate or rejected rows.
@@ -73,6 +81,8 @@ Send only `dailyCost` on update. Resending `campaignId`/`year`/`month` in a PATC
 `GET /marketing/v2/tenant/{tenant_id}/campaigns` returns `id`, `name`, `active`, `isDefaultCampaign`, a `category` object, plus `source`/`medium` fields that are frequently `null`.
 
 Spreadsheets will carry campaign **names**, and the API needs campaign **IDs**, so name resolution is a core problem, not an afterthought. Names are not guaranteed unique or stable, and many carry category strings like `Search||Google||NoCost`. Plan for ambiguous and unmatched names as a normal case that the user resolves, not as a crash.
+
+Scale, measured on `acme_east` 2026-08-13: **2,489 campaigns, 2,470 distinct names after normalization, so 19 names are shared by more than one campaign.** Ambiguity is a live condition in this tenant, not a hypothetical. The resolver's refusal to auto-resolve a name matching two campaigns is load-bearing.
 
 ### Tenants
 

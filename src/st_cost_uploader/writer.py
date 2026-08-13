@@ -46,9 +46,14 @@ async def execute(
         async with semaphore:
             try:
                 if plan.action is Action.CREATE:
-                    await client.create_cost(
+                    created = await client.create_cost(
                         plan.campaign_id, plan.year, plan.month, plan.conversion.daily_cost
                     )
+                    # create_cost returns 0 for "no id in the response",
+                    # never for a failure -- a real failure raises before
+                    # this line. Normalize that to None so the audit log
+                    # never shows a 0 where a record id belongs.
+                    return WriteOutcome(plan=plan, ok=True, created_cost_id=created or None)
                 else:
                     await client.update_cost(
                         plan.cost_id,
