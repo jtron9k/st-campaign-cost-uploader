@@ -90,11 +90,13 @@ def test_create_records_a_null_prior(tmp_path):
 
 
 def test_timestamp_is_utc_iso8601(tmp_path):
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     log = AuditLog(tmp_path / "writes.jsonl")
     log.record("t", _outcome())
 
     entry = json.loads((tmp_path / "writes.jsonl").read_text().strip())
     parsed = datetime.fromisoformat(entry["timestamp"])
-    assert parsed.tzinfo is not None
+    # tzinfo alone is satisfied by any aware offset, including +05:00. The
+    # audit log is read across machines, so UTC is the actual requirement.
+    assert parsed.utcoffset() == timedelta(0)

@@ -91,6 +91,25 @@ def test_convert_rejects_float_input():
         ("", None),
         (None, None),
         ("n/a", None),
+        # Non-finite Decimals parse cleanly out of Decimal() but must never
+        # reach the money path: NaN propagates silently through quantize and
+        # serializes as a bare NaN literal, which is not valid JSON.
+        ("nan", None),
+        ("NaN", None),
+        ("inf", None),
+        ("Infinity", None),
+        ("-Infinity", None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (Decimal("NaN"), None),
+        (Decimal("Infinity"), None),
+        # Finite but too large to represent to the cent. convert() would
+        # raise InvalidOperation out of the planner and 500 the preview.
+        ("1e999", None),
+        ("-1e999", None),
+        # A bool is an int subclass, so it would otherwise become Decimal("1").
+        (True, None),
+        (False, None),
     ],
 )
 def test_parse_money(raw, expected):

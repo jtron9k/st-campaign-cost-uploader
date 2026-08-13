@@ -42,6 +42,25 @@ def convert(monthly_total: Decimal, year: int, month: int) -> CostConversion:
     )
 
 
+def _usable_money(result: Decimal) -> Decimal | None:
+    """Return the value only when the rest of the money path can carry it.
+
+    Decimal() happily accepts "NaN", "Infinity" and "1e999", none of which are
+    money. NaN is the dangerous one: it survives quantize() silently, renders
+    as NaN in every preview column, and serializes as a bare NaN literal,
+    which is not valid JSON, straight into a write body. Values too large to
+    quantize to the cent are rejected with the same test the money path itself
+    performs, so nothing reaches convert() that convert() cannot represent.
+    """
+    if not result.is_finite():
+        return None
+    try:
+        result.quantize(CENTS)
+    except InvalidOperation:
+        return None
+    return result
+
+
 def parse_money(value: object) -> Decimal | None:
     """Coerce a spreadsheet cell into Decimal. Returns None when not a number.
 
@@ -51,11 +70,11 @@ def parse_money(value: object) -> Decimal | None:
     if value is None:
         return None
     if isinstance(value, Decimal):
-        return value
+        return _usable_money(value)
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return Decimal(str(value))
+        return _usable_money(Decimal(str(value)))
 
     text = str(value).strip()
     if not text:
@@ -66,6 +85,7 @@ def parse_money(value: object) -> Decimal | None:
     if not text:
         return None
     try:
-        return Decimal(text)
+        parsed = Decimal(text)
     except InvalidOperation:
         return None
+    return _usable_money(parsed)

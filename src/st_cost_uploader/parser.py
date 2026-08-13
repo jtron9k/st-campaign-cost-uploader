@@ -80,8 +80,13 @@ def _read_rows(data: bytes, filename: str) -> list[list[object]]:
         return [list(r) for r in csv.reader(io.StringIO(text))]
 
     workbook = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
-    sheet = workbook.active
-    return [list(r) for r in sheet.iter_rows(values_only=True)]
+    try:
+        # iter_rows is lazy on a read-only workbook, so the rows are
+        # materialised inside the try. Returning the generator would hand
+        # back an iterator over an already-closed archive.
+        return [list(r) for r in workbook.active.iter_rows(values_only=True)]
+    finally:
+        workbook.close()
 
 
 def _find_column(headers: list[object], pattern: re.Pattern[str]) -> int | None:

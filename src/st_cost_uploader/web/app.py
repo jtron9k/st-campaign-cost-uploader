@@ -28,6 +28,7 @@ from st_cost_uploader.models import (
     Resolution,
     WriteOutcome,
 )
+from st_cost_uploader.normalize import normalize_name
 from st_cost_uploader.parser import ParserError, parse_workbook
 from st_cost_uploader.planner import plan as build_plan
 from st_cost_uploader.resolver import resolve as resolve_names
@@ -93,17 +94,25 @@ def _render_resolve(request: Request, session: UploadSession, campaigns: list[Ca
     )
 
 
-def _tenant_names() -> list[str]:
+def _tenant_options() -> tuple[list[str], str | None]:
+    """Configured tenant names, plus the reason the list came back empty.
+
+    ConfigError names the exact missing variable. Swallowing it leaves the
+    upload screen with no tenant buttons and no explanation, which is the
+    first thing an operator hits after filling in a partial .env, so the
+    message is carried through to the template instead.
+    """
     try:
-        return list(load_tenants())
-    except ConfigError:
-        return []
+        return list(load_tenants()), None
+    except ConfigError as exc:
+        return [], str(exc)
 
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
+    tenants, config_error = _tenant_options()
     return TEMPLATES.TemplateResponse(
-        request, "upload.html", {"step": 1, "tenants": _tenant_names()}
+        request, "upload.html", {"step": 1, "tenants": tenants, "error": config_error}
     )
 
 
@@ -114,7 +123,7 @@ async def upload(
     layout: str = Form(""),
     file: UploadFile = File(...),  # noqa: B008 - FastAPI's required DI idiom, not a mutable default
 ) -> HTMLResponse:
-    tenants = _tenant_names()
+    tenants, config_error = _tenant_options()
 
     def fail(message: str) -> HTMLResponse:
         return TEMPLATES.TemplateResponse(
@@ -125,7 +134,10 @@ async def upload(
         )
 
     if tenant not in tenants:
-        return fail(f"'{tenant}' is not a configured tenant.")
+        # A broken config is the root cause and names the fix. Reporting the
+        # submitted tenant instead would send the operator looking in the
+        # wrong place.
+        return fail(config_error or f"'{tenant}' is not a configured tenant.")
 
     try:
         result = parse_workbook(
@@ -178,6 +190,11 @@ async def confirm_choices(request: Request, session_id: str) -> HTMLResponse:
     form = await request.form()
     store = AliasStore.load(session.tenant, ALIAS_DIR)
     by_id = {c.id: c for c in session.campaigns}
+    # Rows are only ever replaced, never reordered or removed, and a
+    # replacement keeps the same row, so these stay aligned for the whole
+    # submission. Computing them once keeps a 1,000-row sheet from
+    # re-normalizing every name for every confirmed choice.
+    normalized = [normalize_name(r.row.campaign_name) for r in session.resolutions]
 
     for key, value in form.items():
         if not key.startswith("choice_") or value == "skip":
@@ -207,6 +224,22 @@ async def confirm_choices(request: Request, session_id: str) -> HTMLResponse:
             campaign_name=campaign.name,
         )
         store.set(current.row.campaign_name, campaign.id)
+
+        # The alias just written to disk keys on the normalized name, so this
+        # decision already covers every row carrying that name. A wide sheet
+        # turns one name into twelve rows; demanding twelve identical answers
+        # and silently dropping the eleven that go unanswered is not an
+        # option. Only rows nobody has resolved are filled in, so an explicit
+        # pick elsewhere in this same submission still wins.
+        for other, res in enumerate(session.resolutions):
+            if other == index or res.is_resolved or normalized[other] != normalized[index]:
+                continue
+            session.resolutions[other] = Resolution(
+                row=res.row,
+                kind=MatchKind.ALIAS,
+                campaign_id=campaign.id,
+                campaign_name=campaign.name,
+            )
 
     store.save()
     return await preview_screen(request, session_id)
@@ -246,6 +279,23 @@ async def preview_screen(request: Request, session_id: str) -> HTMLResponse:
     )
 
 
+_FORMULA_LEADERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_text(value: str) -> str:
+    """Keep a campaign name from executing when the export is opened in Excel.
+
+    A cell whose text begins = + - @ (or a tab/CR that Excel strips before
+    looking) is evaluated as a formula. A leading apostrophe is the
+    conventional guard and renders as plain text. Only the name is treated
+    this way: the other columns are ints and Decimals this app produced
+    itself, and quoting a negative amount would break it as a number.
+    """
+    if value.startswith(_FORMULA_LEADERS):
+        return "'" + value
+    return value
+
+
 @app.get("/unmatched/{session_id}.csv")
 def unmatched_csv(session_id: str) -> StreamingResponse:
     session = _session(session_id)
@@ -255,7 +305,13 @@ def unmatched_csv(session_id: str) -> StreamingResponse:
     for res in session.unresolved:
         row = res.row
         writer.writerow(
-            [row.campaign_name, row.year, row.month, row.monthly_total, row.source_row]
+            [
+                _csv_text(row.campaign_name),
+                row.year,
+                row.month,
+                row.monthly_total,
+                row.source_row,
+            ]
         )
     buffer.seek(0)
     return StreamingResponse(
@@ -268,33 +324,49 @@ def unmatched_csv(session_id: str) -> StreamingResponse:
 @app.post("/write/{session_id}", response_class=HTMLResponse)
 async def write_costs(request: Request, session_id: str) -> HTMLResponse:
     session = _session(session_id)
+    if session.outcomes:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This batch already ran and will not be sent twice. The plan was "
+                "built before those writes landed, so replaying it would duplicate "
+                "them. Re-upload the sheet to retry."
+            ),
+        )
     if not session.plans:
         raise HTTPException(
             status_code=400,
             detail="Build a preview before writing. Nothing has been sent to ServiceTitan.",
         )
 
+    plans = session.plans
     client = get_client(session.tenant)
     try:
         session.outcomes = await execute_plan(
-            session.plans, client, AuditLog(AUDIT_PATH), session.tenant
+            plans, client, AuditLog(AUDIT_PATH), session.tenant
         )
     finally:
         await client.aclose()
+
+    unchanged = sum(1 for p in plans if p.action is Action.NO_CHANGE)
+    # Spend the plan. A batch of only NO_CHANGE rows attempts nothing, so
+    # outcomes stays empty and the guard above would not catch a resubmit;
+    # clearing the plan drops that case through to the 400 instead.
+    session.plans = []
 
     failed = [o for o in session.outcomes if not o.ok]
     return TEMPLATES.TemplateResponse(
         request,
         "results.html",
         {
-            "step": 3,
+            "step": 4,
             "session_id": session.id,
             "tenant": session.tenant,
             "filename": session.filename,
             "attempted": len(session.outcomes),
             "succeeded": len(session.outcomes) - len(failed),
             "failed": failed,
-            "unchanged": sum(1 for p in session.plans if p.action is Action.NO_CHANGE),
+            "unchanged": unchanged,
             "unresolved": session.unresolved,
         },
     )

@@ -182,3 +182,37 @@ def test_blank_rows_do_not_shift_reported_row_numbers_wide():
 
     assert len(result.errors) == 1
     assert result.errors[0].source_row == 4
+
+
+def test_the_workbook_handle_is_closed_after_reading(monkeypatch):
+    # load_workbook(read_only=True) holds an open zip archive that openpyxl
+    # expects the caller to close. The rows must still be fully materialised
+    # before that happens, because iter_rows is lazy in read-only mode.
+    from openpyxl import load_workbook as real_load_workbook
+
+    from st_cost_uploader import parser as parser_module
+
+    closed: list[bool] = []
+
+    def tracking_load_workbook(*args, **kwargs):
+        workbook = real_load_workbook(*args, **kwargs)
+        original_close = workbook.close
+
+        def close():
+            closed.append(True)
+            original_close()
+
+        workbook.close = close
+        return workbook
+
+    monkeypatch.setattr(parser_module, "load_workbook", tracking_load_workbook)
+
+    result = parse_workbook(
+        _xlsx([["Campaign", "Month", "Spend"], ["Yelp", "2026-02", "5000.00"]]),
+        "spend.xlsx",
+    )
+
+    assert closed == [True]
+    # Proof the rows survived the close rather than coming back empty.
+    assert [r.campaign_name for r in result.rows] == ["Yelp"]
+    assert result.rows[0].monthly_total == Decimal("5000.00")

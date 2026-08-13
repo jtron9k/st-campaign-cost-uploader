@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Campaign Cost Uploader</title>
-<script src="https://unpkg.com/htmx.org@2.0.3"></script>
 <style>
 :root{
   --bg:#F7F6F3; --surface:#FFF; --ink:#1A1917; --ink2:#6B6A63; --ink3:#9C9A92;
@@ -80,6 +79,7 @@ select{font-family:var(--mono);font-size:13px;padding:8px 12px;
     <span class="step {% if step == 1 %}on{% endif %}">1 Upload</span>
     <span class="step {% if step == 2 %}on{% endif %}">2 Resolve</span>
     <span class="step {% if step == 3 %}on{% endif %}">3 Preview</span>
+    <span class="step {% if step == 4 %}on{% endif %}">4 Results</span>
   </div>
 </div>
 <div class="body">{% block content %}{% endblock %}</div>
