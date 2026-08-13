@@ -44,8 +44,12 @@ Consequences to design around:
 
 ServiceTitan does **not** pre-create cost rows for every campaign. This is confirmed by counterexample within one tenant:
 
-- Campaign `1000001` has records going back to 2022-01, all at `dailyCost: 0.0`.
+- Campaign `1000001` has a record for **every** month from 2022-01 through 2026-12, 60 in all, including all twelve months of 2026 sitting at `0.0` (verified 2026-08-13 via `scripts/st_probe.py`). Most are `0.0`, but 2023-08 through 2023-10, 2024-01 through 2024-03, and every month of 2025 carry real values. An earlier note here claimed all 60 were `0.0`; that was wrong.
 - Campaign `1000002` ("Google") has **zero** cost records.
+
+Consequence for testing: **campaign `1000001` cannot exercise the CREATE path.** Every month it could be pointed at already has a record, so the planner will choose UPDATE every time. Settling whether `POST /costs` behaves as assumed needs a campaign-month with no record &mdash; `1000002` is the known one.
+
+The record ids also arrive in three contiguous blocks (`500000001`+ for 2022-2024, `500000002`+ for 2025, `500000003`+ for 2026), which suggests ServiceTitan bulk-creates a year of rows at a time. Do not depend on that; it is an observation, not a documented guarantee.
 
 So for every `(campaign, year, month)` the tool must look up an existing record and update it, or create one when absent. Blind creates risk duplicate or rejected rows.
 
