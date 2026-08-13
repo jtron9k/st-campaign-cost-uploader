@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" action="/upload" enctype="multipart/form-data">
+  <p class="label">TENANT</p>
+  <div class="chips">
+    {% for name in tenants %}
+    <label class="chip">
+      <input type="radio" name="tenant" value="{{ name }}"
+             {% if loop.first %}checked{% endif %}>{{ name }}
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+  <div class="drop" style="margin-top:24px">
+    <b>Choose a spreadsheet</b>
+    <span>.xlsx or .csv &middot; long or wide layout &middot; up to about 1,000 rows</span>
+    <p><input type="file" name="file" accept=".xlsx,.csv" required></p>
+  </div>
+
+  <p style="margin-top:20px">
+    <label class="label" for="layout">LAYOUT</label>
+    <select name="layout" id="layout">
+      <option value="">Detect automatically</option>
+      <option value="long">Force long: one row per campaign-month</option>
+      <option value="wide">Force wide: months across the top</option>
+    </select>
+  </p>
+
+  <div class="foot" style="margin-top:24px">
+    <span class="note">Nothing is written to ServiceTitan until you approve the preview.</span>
+    <button class="primary" type="submit">Resolve campaign names</button>
+  </div>
+</form>
+
+{% if result %}
+<div class="card">
+  <p><b>{{ filename }}</b> &mdash; <span class="badge create">{{ result.layout|upper }} LAYOUT</span></p>
+  <p class="sub">{{ result.rows|length }} rows &middot; {{ result.errors|length }} skipped</p>
+  <table>
+    <tr><th>SPREADSHEET COLUMN</th><th>MAPS TO</th></tr>
+    {% for source, target in result.column_mapping.items() %}
+    <tr><td class="name">{{ source }}</td><td>{{ target }}</td></tr>
+    {% endfor %}
+  </table>
+  {% if result.errors %}
+  <p class="label" style="margin-top:20px">SKIPPED ROWS</p>
+  <table>
+    <tr><th>ROW</th><th>REASON</th></tr>
+    {% for e in result.errors %}
+    <tr><td>{{ e.source_row }}</td><td>{{ e.message }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <div class="foot" style="margin-top:20px">
+    <span class="note">Wrong layout? Re-upload with the override set.</span>
+    <form method="post" action="/resolve/{{ session_id }}">
+      <button class="primary" type="submit">Resolve campaign names</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

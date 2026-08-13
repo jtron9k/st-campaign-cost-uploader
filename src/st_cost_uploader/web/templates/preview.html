@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div>
+  <h1>Review before writing</h1>
+  <p class="sub">
+    {{ filename }} &rarr; {{ tenant }}. Nothing has been sent to ServiceTitan yet.
+  </p>
+</div>
+
+<div class="stats">
+  <div class="tile"><b style="color:var(--accent)">{{ will_write }}</b><span>Rows will write</span></div>
+  <div class="tile"><b style="color:var(--warn)">{{ overwrites }}</b><span>Overwrite existing value</span></div>
+  <div class="tile"><b style="color:var(--danger)">{{ unresolved|length }}</b><span>Skipped, unmatched</span></div>
+  <div class="tile"><b>{{ net_residual }}</b><span>Net rounding residual</span></div>
+</div>
+
+{% if overwrites %}
+<div class="warnbar">
+  {{ overwrites }} rows replace an existing non-zero cost. Those rows are tinted below,
+  with the prior value shown.
+</div>
+{% endif %}
+
+<table>
+  <tr>
+    <th>CAMPAIGN</th><th>PERIOD</th><th class="num">MONTHLY TOTAL</th>
+    <th class="num">DAYS</th><th class="num">DAILY COST</th>
+    <th class="num">RECONSTRUCTS</th><th class="num">&Delta;</th>
+    <th class="num">PRIOR</th><th class="num">ACTION</th>
+  </tr>
+  {% for p in plans %}
+  <tr class="{% if p.overwrites_nonzero %}overwrite{% elif p.action.value == 'no_change' %}dim{% endif %}">
+    <td class="name">{{ p.campaign_name }}</td>
+    <td>{{ p.year }}-{{ '%02d' % p.month }}</td>
+    <td class="num">{{ p.conversion.monthly_total }}</td>
+    <td class="num">{{ p.conversion.days_in_month }}</td>
+    <td class="num"><b>{{ p.conversion.daily_cost }}</b></td>
+    <td class="num">{{ p.conversion.reconstructed_total }}</td>
+    <td class="num">{{ p.conversion.residual }}</td>
+    <td class="num">{% if p.prior_daily_cost is none %}&mdash;{% else %}{{ p.prior_daily_cost }}{% endif %}</td>
+    <td class="num"><span class="badge {{ p.action.value }}">{{ p.action.value|upper|replace('_',' ') }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p class="note">
+  The divisor is computed per row. February 2024 divides by 29, February 2026 by 28.
+  Residual is the cost of ServiceTitan storing dailyCost to the cent.
+</p>
+
+<div class="foot">
+  {% if unresolved %}
+  <a class="ghost" href="/unmatched/{{ session_id }}.csv">
+    Download {{ unresolved|length }} unmatched rows
+  </a>
+  {% else %}<span class="note">Every row resolved.</span>{% endif %}
+  <form method="post" action="/write/{{ session_id }}">
+    <button class="primary" type="submit">
+      Write {{ will_write }} costs to {{ tenant }}
+    </button>
+  </form>
+</div>
+{% endblock %}
