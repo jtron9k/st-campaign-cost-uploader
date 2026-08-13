@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div>
+  <h1>Resolve campaign names</h1>
+  <p class="sub">
+    {{ total }} names in the sheet &middot; {{ auto }} resolved automatically
+    &middot; {{ pending|length }} need your decision
+  </p>
+</div>
+
+<div class="stats">
+  <div class="tile"><b style="color:var(--accent)">{{ counts.exact }}</b><span>Exact name match</span></div>
+  <div class="tile"><b style="color:var(--accent)">{{ counts.alias }}</b><span>Resolved from alias</span></div>
+  <div class="tile"><b style="color:var(--warn)">{{ counts.fuzzy }}</b><span>Fuzzy suggestion</span></div>
+  <div class="tile"><b style="color:var(--danger)">{{ counts.none }}</b><span>No match found</span></div>
+</div>
+
+<form method="post" action="/confirm/{{ session_id }}">
+  {% if pending %}
+  <table>
+    <tr>
+      <th>NAME IN SPREADSHEET</th><th>MATCH</th><th>SERVICETITAN CAMPAIGN</th>
+    </tr>
+    {% for index, res in pending %}
+    <tr>
+      <td class="name">{{ res.row.campaign_name }}</td>
+      <td>
+        {% if res.kind.value == 'fuzzy' %}
+          <span class="badge fuzzy">{{ res.candidates[0].score }}%</span>
+        {% else %}
+          <span class="badge unmatched">UNMATCHED</span>
+        {% endif %}
+      </td>
+      <td>
+        <select name="choice_{{ index }}">
+          <option value="skip">Skip this row</option>
+          {% for c in res.candidates %}
+          <option value="{{ c.campaign_id }}">{{ c.campaign_name }} ({{ c.score }}%)</option>
+          {% endfor %}
+          {% for c in all_campaigns %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="note">Every name resolved. Nothing to decide here.</p>
+  {% endif %}
+
+  <div class="foot" style="margin-top:24px">
+    <span class="note">
+      Every confirmed match is saved to aliases/{{ tenant }}.json and reused on future uploads.
+    </span>
+    <button class="primary" type="submit">Build preview</button>
+  </div>
+</form>
+{% endblock %}
