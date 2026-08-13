@@ -336,3 +336,86 @@ def test_preview_reports_the_net_residual(client, fake_st):
     response = client.post(f"/preview/{sid}")
 
     assert "residual" in response.text.lower()
+
+
+def test_preview_shows_a_no_change_row_as_dimmed(client, fake_st):
+    # Default sheet is 5000.00 over 2026-02, which converts to 178.57/day.
+    # Seeding an existing record at that exact value means the planner
+    # produces NO_CHANGE, and this is the only test that ever exercises
+    # that branch of the preview table.
+    fake_st._costs = {
+        (1, 2026, 2): CostRecord(id=99, campaign_id=1, year=2026, month=2,
+                                 daily_cost=Decimal("178.57")),
+    }
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    response = client.post(f"/preview/{sid}")
+
+    assert response.status_code == 200
+    assert SESSIONS[sid].plans[0].action.value == "no_change"
+    assert "NO CHANGE" in response.text.upper()
+
+
+def test_write_creates_the_planned_costs(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+    response = client.post(f"/write/{sid}")
+
+    assert response.status_code == 200
+    assert fake_st.created == [(1, 2026, 2, Decimal("178.57"))]
+
+
+def test_write_updates_an_existing_record(client, fake_st):
+    fake_st._costs = {
+        (1, 2026, 2): CostRecord(id=99, campaign_id=1, year=2026, month=2,
+                                 daily_cost=Decimal("71.43")),
+    }
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+    client.post(f"/write/{sid}")
+
+    assert fake_st.updated == [(99, 1, 2026, 2, Decimal("178.57"))]
+    assert fake_st.created == []
+
+
+def test_write_reports_success_counts(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+    response = client.post(f"/write/{sid}")
+
+    assert "1" in response.text
+    assert "wrote" in response.text.lower() or "written" in response.text.lower()
+
+
+def test_write_records_to_the_audit_log(client, fake_st, tmp_path):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+    client.post(f"/write/{sid}")
+
+    lines = (tmp_path / "writes.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+
+
+def test_a_failing_row_is_reported_without_killing_the_batch(client, fake_st):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("ServiceTitan said no")
+
+    fake_st.create_cost = boom
+
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+    response = client.post(f"/write/{sid}")
+
+    assert response.status_code == 200
+    assert "ServiceTitan said no" in response.text
+    assert SESSIONS[sid].outcomes[0].ok is False
+
+
+def test_writing_without_a_preview_is_refused(client, fake_st):
+    sid = _start(client)
+    assert client.post(f"/write/{sid}").status_code == 400

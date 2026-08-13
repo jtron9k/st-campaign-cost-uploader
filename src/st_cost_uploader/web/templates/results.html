@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div>
+  <h1>{{ succeeded }} of {{ attempted }} written to {{ tenant }}</h1>
+  <p class="sub">
+    {{ filename }} &middot; recorded in logs/writes.jsonl
+  </p>
+</div>
+
+<div class="stats">
+  <div class="tile"><b style="color:var(--accent)">{{ succeeded }}</b><span>Wrote successfully</span></div>
+  <div class="tile"><b style="color:var(--danger)">{{ failed|length }}</b><span>Failed</span></div>
+  <div class="tile"><b style="color:var(--ink3)">{{ unchanged }}</b><span>Already correct, skipped</span></div>
+  <div class="tile"><b style="color:var(--danger)">{{ unresolved|length }}</b><span>Unmatched, not written</span></div>
+</div>
+
+{% if failed %}
+<div class="warnbar">
+  {{ failed|length }} rows failed. Every write is idempotent per campaign-month,
+  so re-uploading the same sheet will retry them safely.
+</div>
+<table>
+  <tr><th>CAMPAIGN</th><th>PERIOD</th><th class="num">DAILY COST</th><th>ERROR</th></tr>
+  {% for o in failed %}
+  <tr>
+    <td class="name">{{ o.plan.campaign_name }}</td>
+    <td>{{ o.plan.year }}-{{ '%02d' % o.plan.month }}</td>
+    <td class="num">{{ o.plan.conversion.daily_cost }}</td>
+    <td class="err">{{ o.error }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div class="foot">
+  {% if unresolved %}
+  <a class="ghost" href="/unmatched/{{ session_id }}.csv">
+    Download {{ unresolved|length }} unmatched rows
+  </a>
+  {% else %}<span class="note">Every row resolved.</span>{% endif %}
+  <form method="get" action="/"><button class="primary" type="submit">Upload another sheet</button></form>
+</div>
+{% endblock %}

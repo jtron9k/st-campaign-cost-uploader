@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from st_cost_uploader.aliases import AliasStore
-from st_cost_uploader.audit import AuditLog  # noqa: F401 -- unused until Task 16
+from st_cost_uploader.audit import AuditLog
 from st_cost_uploader.client import ServiceTitanClient
 from st_cost_uploader.config import ConfigError, load_tenants
 from st_cost_uploader.models import (
@@ -31,6 +31,7 @@ from st_cost_uploader.models import (
 from st_cost_uploader.parser import ParserError, parse_workbook
 from st_cost_uploader.planner import plan as build_plan
 from st_cost_uploader.resolver import resolve as resolve_names
+from st_cost_uploader.writer import execute as execute_plan
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -261,4 +262,39 @@ def unmatched_csv(session_id: str) -> StreamingResponse:
         buffer,
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="unmatched-{session_id}.csv"'},
+    )
+
+
+@app.post("/write/{session_id}", response_class=HTMLResponse)
+async def write_costs(request: Request, session_id: str) -> HTMLResponse:
+    session = _session(session_id)
+    if not session.plans:
+        raise HTTPException(
+            status_code=400,
+            detail="Build a preview before writing. Nothing has been sent to ServiceTitan.",
+        )
+
+    client = get_client(session.tenant)
+    try:
+        session.outcomes = await execute_plan(
+            session.plans, client, AuditLog(AUDIT_PATH), session.tenant
+        )
+    finally:
+        await client.aclose()
+
+    failed = [o for o in session.outcomes if not o.ok]
+    return TEMPLATES.TemplateResponse(
+        request,
+        "results.html",
+        {
+            "step": 3,
+            "session_id": session.id,
+            "tenant": session.tenant,
+            "filename": session.filename,
+            "attempted": len(session.outcomes),
+            "succeeded": len(session.outcomes) - len(failed),
+            "failed": failed,
+            "unchanged": sum(1 for p in session.plans if p.action is Action.NO_CHANGE),
+            "unresolved": session.unresolved,
+        },
     )
