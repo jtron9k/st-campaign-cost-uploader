@@ -77,8 +77,18 @@ def test_fuzzy_offers_candidates_without_resolving(tmp_path):
 
 
 def test_candidates_are_sorted_by_score_descending(tmp_path):
-    [res] = resolve([_row("Google Search Brand")], CAMPAIGNS, _store(tmp_path))
+    # CAMPAIGNS alone doesn't clear the fuzzy floor with more than one
+    # candidate for any single sheet name, which would make the sort
+    # assertion below vacuously true ([] == []). Use a fixture with several
+    # genuinely similar names so more than one candidate is actually scored.
+    similar = [
+        Campaign(id=1, name="Google Search Brand", active=True),
+        Campaign(id=2, name="Google Search Generic", active=True),
+        Campaign(id=3, name="Google Display", active=True),
+    ]
+    [res] = resolve([_row("Google Search")], similar, _store(tmp_path))
     scores = [c.score for c in res.candidates]
+    assert len(scores) > 1
     assert scores == sorted(scores, reverse=True)
 
 
