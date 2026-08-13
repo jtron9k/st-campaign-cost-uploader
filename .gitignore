@@ -1,0 +1,44 @@
+# Secrets. ServiceTitan client ID / secret / app key / tenant IDs live here.
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+secrets.*
+
+# Real customer spend data. Keep anonymized fixtures in tests/fixtures/ instead.
+/data/
+/private/
+*.local.xlsx
+*.local.csv
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
