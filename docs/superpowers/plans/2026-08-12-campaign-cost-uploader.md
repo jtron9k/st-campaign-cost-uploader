@@ -1561,7 +1561,7 @@ from st_cost_uploader.config import ConfigError, load_tenants
 
 BASE = {
     "ST_TENANTS": "acme_east,northwind",
-    "ST_TENANT_ACME_EAST_ID": "769643737",
+    "ST_TENANT_ACME_EAST_ID": "100000001",
     "ST_TENANT_ACME_EAST_CLIENT_ID": "cid.aaa",
     "ST_TENANT_ACME_EAST_CLIENT_SECRET": "cs2.bbb",
     "ST_TENANT_ACME_EAST_APP_KEY": "ak1.ccc",
@@ -1575,7 +1575,7 @@ BASE = {
 def test_loads_every_listed_tenant():
     tenants = load_tenants(BASE)
     assert set(tenants) == {"acme_east", "northwind"}
-    assert tenants["acme_east"].tenant_id == "769643737"
+    assert tenants["acme_east"].tenant_id == "100000001"
     assert tenants["northwind"].app_key == "ak1.fff"
 
 
