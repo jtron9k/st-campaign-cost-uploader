@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import httpx
@@ -205,3 +206,85 @@ async def test_bad_credentials_surface_immediately():
 
 async def test_api_base_is_the_documented_host():
     assert API_BASE == "https://api.servicetitan.io"
+
+
+async def test_create_cost_posts_the_documented_body():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={"id": 555})
+
+    new_id = await _client(handler).create_cost(7, 2026, 2, Decimal("178.57"))
+
+    assert new_id == 555
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/marketing/v2/tenant/999/costs"
+    # httpx serializes JSON with compact separators (no space after ":"),
+    # so these assertions match the real wire format, not textbook json.dumps.
+    assert '"campaignId":7' in seen["body"]
+    assert '"year":2026' in seen["body"]
+    assert '"month":2' in seen["body"]
+    assert "178.57" in seen["body"]
+
+
+async def test_daily_cost_is_serialized_as_a_number_not_a_string():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={"id": 1})
+
+    await _client(handler).create_cost(7, 2026, 2, Decimal("178.57"))
+
+    assert '"dailyCost":178.57' in seen["body"]
+    assert '"dailyCost":"178.57"' not in seen["body"]
+
+
+async def test_update_cost_targets_the_record_path():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={})
+
+    await _client(handler).update_cost(555, 7, 2026, 2, Decimal("85.71"))
+
+    assert seen["method"] == "PATCH"
+    assert seen["path"] == "/marketing/v2/tenant/999/costs/555"
+    assert "85.71" in seen["body"]
+
+
+async def test_update_cost_sends_only_the_daily_cost():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={"id": 555})
+
+    await _client(handler).update_cost(555, 7, 2026, 2, Decimal("85.71"))
+
+    body = json.loads(seen["body"])
+    assert body == {"dailyCost": 85.71}
+
+
+async def test_write_failure_raises_with_the_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        return httpx.Response(422, text="validation failed")
+
+    with pytest.raises(ServiceTitanError, match="422"):
+        await _client(handler).create_cost(7, 2026, 2, Decimal("1.00"))

@@ -164,3 +164,45 @@ class ServiceTitanClient:
                 record = _cost_record(r)
                 found[record.period_key] = record
         return found
+
+    # ---- writes -----------------------------------------------------------
+
+    @staticmethod
+    def _cost_body(campaign_id: int, year: int, month: int, daily_cost: Decimal) -> dict:
+        # float() here is the single, deliberate crossing point into JSON.
+        # The value is already quantized to 2dp, which float represents
+        # exactly enough for transport; it is never used for arithmetic.
+        return {
+            "campaignId": campaign_id,
+            "year": year,
+            "month": month,
+            "dailyCost": float(daily_cost),
+        }
+
+    async def create_cost(
+        self, campaign_id: int, year: int, month: int, daily_cost: Decimal
+    ) -> int:
+        payload = await self._request(
+            "POST",
+            self._tenant_path("costs"),
+            json_body=self._cost_body(campaign_id, year, month, daily_cost),
+        )
+        return int(payload.get("id", 0))
+
+    async def update_cost(
+        self, cost_id: int, campaign_id: int, year: int, month: int, daily_cost: Decimal
+    ) -> None:
+        # Verified against production (2026-08-12, tenant acme_east,
+        # record 500000001, supervised write + restore): PATCH accepts and
+        # requires only {"dailyCost": ...}. campaign_id/year/month identify
+        # which record this is, and are accepted here only to keep the
+        # signature stable for callers (Task 12) -- do NOT add them back
+        # into the body. Sending identifying fields on an update to an
+        # existing record was never verified and risks re-keying the row
+        # to the wrong campaign-month.
+        del campaign_id, year, month
+        await self._request(
+            "PATCH",
+            self._tenant_path(f"costs/{cost_id}"),
+            json_body={"dailyCost": float(daily_cost)},
+        )
