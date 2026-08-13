@@ -187,6 +187,16 @@ class ServiceTitanClient:
             self._tenant_path("costs"),
             json_body=self._cost_body(campaign_id, year, month, daily_cost),
         )
+        # Only PATCH's response shape is verified against production
+        # (2026-08-12, tenant acme_east, record 500000001): {"id": ...}.
+        # POST /costs' response shape is unverified. _request returns {} for
+        # an empty body, so a 0 here means "no id in the response" or "empty
+        # body" -- not "the write failed" (a real failure raises
+        # ServiceTitanError before this line ever runs). The only caller
+        # today discards this return value, which is what makes 0 inert.
+        # Do not use this return value to build a follow-up request path
+        # (e.g. PATCH .../costs/{id}) without first verifying create's
+        # response shape against the live API.
         return int(payload.get("id", 0))
 
     async def update_cost(

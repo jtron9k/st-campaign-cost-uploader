@@ -288,3 +288,13 @@ async def test_write_failure_raises_with_the_status():
 
     with pytest.raises(ServiceTitanError, match="422"):
         await _client(handler).create_cost(7, 2026, 2, Decimal("1.00"))
+
+
+async def test_update_cost_write_failure_raises_with_the_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        return httpx.Response(500, text="server error")
+
+    with pytest.raises(ServiceTitanError, match="500"):
+        await _client(handler).update_cost(555, 7, 2026, 2, Decimal("1.00"))
