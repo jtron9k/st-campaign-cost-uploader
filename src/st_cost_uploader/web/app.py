@@ -32,6 +32,7 @@ from st_cost_uploader.normalize import normalize_name
 from st_cost_uploader.parser import ParserError, parse_workbook
 from st_cost_uploader.planner import plan as build_plan
 from st_cost_uploader.resolver import resolve as resolve_names
+from st_cost_uploader.samples import sample_csv
 from st_cost_uploader.writer import execute as execute_plan
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -318,6 +319,29 @@ def unmatched_csv(session_id: str) -> StreamingResponse:
         buffer,
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="unmatched-{session_id}.csv"'},
+    )
+
+
+@app.get("/sample/{layout}.csv")
+def sample_spreadsheet(layout: str) -> StreamingResponse:
+    """A format example, one per supported layout.
+
+    No session, no tenant, no network call: an operator reaches this before
+    they have chosen anything, which is exactly when they need it.
+    """
+    try:
+        text = sample_csv(layout)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        io_module.StringIO(text),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="campaign-costs-sample-{layout}.csv"'
+            )
+        },
     )
 
 

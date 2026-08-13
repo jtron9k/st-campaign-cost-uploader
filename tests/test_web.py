@@ -679,3 +679,39 @@ def test_a_resubmitted_no_change_batch_is_also_refused(client, fake_st):
     assert client.post(f"/write/{sid}").status_code == 400
     assert fake_st.created == []
     assert fake_st.updated == []
+
+
+def test_the_long_sample_downloads_as_an_attachment(client):
+    response = client.get("/sample/long.csv")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "campaign-costs-sample-long.csv" in response.headers["content-disposition"]
+    assert response.text.startswith("Campaign,Month,Total Spend")
+
+
+def test_the_wide_sample_downloads_as_an_attachment(client):
+    response = client.get("/sample/wide.csv")
+
+    assert response.status_code == 200
+    assert "campaign-costs-sample-wide.csv" in response.headers["content-disposition"]
+    assert response.text.startswith("Campaign,")
+
+
+def test_an_unknown_sample_layout_is_a_404(client):
+    assert client.get("/sample/sideways.csv").status_code == 404
+
+
+def test_the_sample_route_needs_no_tenant_configured(monkeypatch):
+    """It is reachable before the operator has chosen anything, so a broken
+    or absent tenant config must not take it down with the upload screen."""
+    monkeypatch.delenv("ST_TENANTS", raising=False)
+
+    assert TestClient(app).get("/sample/long.csv").status_code == 200
+
+
+def test_the_upload_screen_links_both_samples(client):
+    body = client.get("/").text
+
+    assert "/sample/long.csv" in body
+    assert "/sample/wide.csv" in body
