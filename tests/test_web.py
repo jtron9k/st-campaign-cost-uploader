@@ -1,11 +1,11 @@
 import io
-from decimal import Decimal  # noqa: F401 -- kept per the brief, unused in these tests
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
-from st_cost_uploader.models import Campaign, CostRecord  # noqa: F401 -- CostRecord unused here
+from st_cost_uploader.models import Campaign, CostRecord
 from st_cost_uploader.web.app import SESSIONS, app
 
 
@@ -248,3 +248,91 @@ def test_confirm_ignores_a_malformed_choice_without_500(client, fake_st):
 
 def test_unknown_session_returns_404(client, fake_st):
     assert client.post("/resolve/nope").status_code == 404
+
+
+def test_preview_shows_the_computed_daily_cost(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    response = client.post(f"/preview/{sid}")
+
+    assert response.status_code == 200
+    # 5000.00 over February 2026 (28 days)
+    assert "178.57" in response.text
+    assert "4999.96" in response.text or "4,999.96" in response.text
+    assert "-0.04" in response.text
+
+
+def test_preview_marks_an_absent_record_as_create(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    response = client.post(f"/preview/{sid}")
+
+    assert "CREATE" in response.text.upper()
+    assert SESSIONS[sid].plans[0].action.value == "create"
+
+
+def test_preview_flags_an_overwrite_of_a_nonzero_value(client, fake_st):
+    fake_st._costs = {
+        (1, 2026, 2): CostRecord(id=99, campaign_id=1, year=2026, month=2,
+                                 daily_cost=Decimal("71.43")),
+    }
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    response = client.post(f"/preview/{sid}")
+
+    assert "71.43" in response.text
+    assert "overwrite" in response.text.lower()
+    assert SESSIONS[sid].plans[0].overwrites_nonzero is True
+
+
+def test_preview_lists_unmatched_rows_separately(client, fake_st):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Campaign", "Month", "Spend"])
+    ws.append(["Yelp", "2026-02", "5000.00"])
+    ws.append(["zzzz nothing like it qqqq", "2026-02", "100.00"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    client.post(
+        "/upload",
+        data={"tenant": "acme_east"},
+        files={"file": ("s.xlsx", buf.getvalue(), "application/octet-stream")},
+    )
+    sid = next(iter(SESSIONS))
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+
+    assert len(SESSIONS[sid].plans) == 1
+    assert len(SESSIONS[sid].unresolved) == 1
+
+
+def test_unmatched_rows_download_as_csv(client, fake_st):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Campaign", "Month", "Spend"])
+    ws.append(["zzzz nothing like it qqqq", "2026-02", "100.00"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    client.post(
+        "/upload",
+        data={"tenant": "acme_east"},
+        files={"file": ("s.xlsx", buf.getvalue(), "application/octet-stream")},
+    )
+    sid = next(iter(SESSIONS))
+    client.post(f"/resolve/{sid}")
+    client.post(f"/preview/{sid}")
+
+    response = client.get(f"/unmatched/{sid}.csv")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "zzzz nothing like it qqqq" in response.text
+
+
+def test_preview_reports_the_net_residual(client, fake_st):
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")
+    response = client.post(f"/preview/{sid}")
+
+    assert "residual" in response.text.lower()

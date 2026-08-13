@@ -3,13 +3,16 @@ decision to the engine package."""
 
 from __future__ import annotations
 
+import csv as csv_module
+import io as io_module
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from st_cost_uploader.aliases import AliasStore
@@ -17,6 +20,7 @@ from st_cost_uploader.audit import AuditLog  # noqa: F401 -- unused until Task 1
 from st_cost_uploader.client import ServiceTitanClient
 from st_cost_uploader.config import ConfigError, load_tenants
 from st_cost_uploader.models import (
+    Action,
     Campaign,
     MatchKind,
     ParseResult,
@@ -25,6 +29,7 @@ from st_cost_uploader.models import (
     WriteOutcome,
 )
 from st_cost_uploader.parser import ParserError, parse_workbook
+from st_cost_uploader.planner import plan as build_plan
 from st_cost_uploader.resolver import resolve as resolve_names
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -208,5 +213,52 @@ async def confirm_choices(request: Request, session_id: str) -> HTMLResponse:
 
 @app.post("/preview/{session_id}", response_class=HTMLResponse)
 async def preview_screen(request: Request, session_id: str) -> HTMLResponse:
-    _session(session_id)
-    return HTMLResponse("preview pending")
+    session = _session(session_id)
+
+    resolved_ids = [r.campaign_id for r in session.resolutions if r.is_resolved]
+    client = get_client(session.tenant)
+    try:
+        existing = await client.list_costs_for_campaigns(resolved_ids)
+    finally:
+        await client.aclose()
+
+    session.plans, session.unresolved = build_plan(session.resolutions, existing)
+
+    will_write = sum(1 for p in session.plans if p.action is not Action.NO_CHANGE)
+    overwrites = sum(1 for p in session.plans if p.overwrites_nonzero)
+    net = sum((p.conversion.residual for p in session.plans), Decimal("0.00"))
+
+    return TEMPLATES.TemplateResponse(
+        request,
+        "preview.html",
+        {
+            "step": 3,
+            "session_id": session.id,
+            "tenant": session.tenant,
+            "filename": session.filename,
+            "plans": session.plans,
+            "unresolved": session.unresolved,
+            "will_write": will_write,
+            "overwrites": overwrites,
+            "net_residual": f"${net}",
+        },
+    )
+
+
+@app.get("/unmatched/{session_id}.csv")
+def unmatched_csv(session_id: str) -> StreamingResponse:
+    session = _session(session_id)
+    buffer = io_module.StringIO()
+    writer = csv_module.writer(buffer)
+    writer.writerow(["campaign_name", "year", "month", "monthly_total", "source_row"])
+    for res in session.unresolved:
+        row = res.row
+        writer.writerow(
+            [row.campaign_name, row.year, row.month, row.monthly_total, row.source_row]
+        )
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="unmatched-{session_id}.csv"'},
+    )
