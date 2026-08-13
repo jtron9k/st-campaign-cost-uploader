@@ -32,6 +32,16 @@ def _to_decimal(value: object) -> Decimal:
     return Decimal(str(value if value is not None else 0))
 
 
+def _cost_record(row: dict) -> CostRecord:
+    return CostRecord(
+        id=row["id"],
+        campaign_id=row["campaignId"],
+        year=row["year"],
+        month=row["month"],
+        daily_cost=_to_decimal(row.get("dailyCost")),
+    )
+
+
 class ServiceTitanClient:
     def __init__(
         self,
@@ -135,13 +145,7 @@ class ServiceTitanClient:
 
     async def get_cost(self, cost_id: int) -> CostRecord:
         r = await self._request("GET", self._tenant_path(f"costs/{cost_id}"))
-        return CostRecord(
-            id=r["id"],
-            campaign_id=r["campaignId"],
-            year=r["year"],
-            month=r["month"],
-            daily_cost=_to_decimal(r.get("dailyCost")),
-        )
+        return _cost_record(r)
 
     async def list_costs_for_campaigns(
         self, campaign_ids: list[int]
@@ -157,12 +161,6 @@ class ServiceTitanClient:
                 self._tenant_path("costs"), {"campaignId": campaign_id}
             )
             for r in rows:
-                record = CostRecord(
-                    id=r["id"],
-                    campaign_id=r["campaignId"],
-                    year=r["year"],
-                    month=r["month"],
-                    daily_cost=_to_decimal(r.get("dailyCost")),
-                )
+                record = _cost_record(r)
                 found[record.period_key] = record
         return found

@@ -147,6 +147,44 @@ async def test_duplicate_campaign_ids_are_fetched_once():
     assert calls["n"] == 1
 
 
+async def test_get_cost_returns_the_single_record():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={
+            "id": 500000001, "year": 2022, "month": 1,
+            "dailyCost": 0.0, "campaignId": 1000001,
+        })
+
+    record = await _client(handler).get_cost(500000001)
+
+    assert seen["path"] == "/marketing/v2/tenant/999/costs/500000001"
+    assert record.id == 500000001
+    assert record.campaign_id == 1000001
+    assert record.year == 2022
+    assert record.month == 1
+    assert isinstance(record.daily_cost, Decimal)
+    assert record.daily_cost == Decimal("0.0")
+
+
+async def test_get_cost_daily_cost_is_decimal_and_reflects_a_nonzero_value():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "auth.servicetitan.io":
+            return _token_response()
+        return httpx.Response(200, json={
+            "id": 1, "year": 2026, "month": 2,
+            "dailyCost": 178.57, "campaignId": 5,
+        })
+
+    record = await _client(handler).get_cost(1)
+
+    assert isinstance(record.daily_cost, Decimal)
+    assert record.daily_cost == Decimal("178.57")
+
+
 async def test_http_error_becomes_service_titan_error():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "auth.servicetitan.io":
