@@ -12,6 +12,10 @@ secrets.*
 *.local.xlsx
 *.local.csv
 
+# Audit log of writes to production tenants. Local record, not shared history.
+# Note: /aliases/ is deliberately NOT ignored. It holds no secrets and the team shares it.
+/logs/
+
 # Claude Code local overrides
 .claude/settings.local.json
 

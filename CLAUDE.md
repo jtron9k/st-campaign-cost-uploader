@@ -37,6 +37,8 @@ Consequences to design around:
 - **Days-in-month varies**, so the divisor is per-row, never a constant. February 2024 has 29 days; February 2026 has 28.
 - **Round-tripping loses money.** $5,000 across February 2026 is $178.571428…/day. Rounded to cents and multiplied back out, that reconstructs as $4,999.96. Decide explicitly how much precision to send and whether to surface the residual to the user. Do not let this get decided by accident inside a float cast.
 - Use exact decimal arithmetic for the money path rather than binary floats.
+- **`dailyCost` stores to the cent** (verified 2026-08-12). Across 500 live records in `acme_east` there were 68 distinct values: 433 whole numbers, 5 at one decimal place, 62 at two, and none above two. The residual is therefore unavoidable rather than a precision choice. It is bounded at half a cent per day, so at most about **$0.155 per campaign-month**.
+- ServiceTitan's own help documentation states the same formula, as total campaign cost divided by the number of days the campaign runs.
 
 ### Writes are an upsert, not a create
 
@@ -47,7 +49,9 @@ ServiceTitan does **not** pre-create cost rows for every campaign. This is confi
 
 So for every `(campaign, year, month)` the tool must look up an existing record and update it, or create one when absent. Blind creates risk duplicate or rejected rows.
 
-Both operations exist in the Marketing v2 API (`create` and `update` on costs). The create body is `{campaignId, year, month, dailyCost}`. Confirm the exact update verb and path against the ServiceTitan developer portal before writing that code; the portal requires an authenticated session, so it could not be read directly here.
+Both operations exist in the Marketing v2 API (`create` and `update` on costs). The create body is `{campaignId, year, month, dailyCost}`.
+
+`GET /marketing/v2/tenant/{tenant_id}/costs/{id}` returns a single record (verified 2026-08-12), so the single-cost resource path exists. The **update verb is still unconfirmed**. Convention across ServiceTitan's v2 API plus that resource path both point to `PATCH /marketing/v2/tenant/{tenant_id}/costs/{id}`, but confirming it requires an actual write. The developer portal is an authenticated single-page app and returns no readable content to an unauthenticated fetch, so it cannot settle this. Confirm with one supervised write against a campaign-month currently reading `0.0`, then re-read and restore.
 
 ### Campaigns and matching
 
