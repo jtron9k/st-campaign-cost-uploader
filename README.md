@@ -30,7 +30,7 @@ uv run pytest
 No test touches the network. The ServiceTitan client is exercised against
 `httpx.MockTransport` and the web layer against a stub client.
 
-See [`next_steps.md`](next_steps.md) for the current handoff, and [`CLAUDE.md`](CLAUDE.md) for verified API behavior.
+See [`next_steps.md`](next_steps.md) for the current handoff, and [`AGENTS.md`](AGENTS.md) for verified API behavior.
 
 ## Safety note
 
