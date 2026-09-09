@@ -1,48 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="post" action="/upload" enctype="multipart/form-data">
-  <p class="label">TENANT</p>
-  <div class="chips">
-    {% for name in tenants %}
-    <label class="chip">
-      <input type="radio" name="tenant" value="{{ name }}"
-             {% if loop.first %}checked{% endif %}>{{ name }}
-    </label>
-    {% endfor %}
-  </div>
-
-  {% if error %}<p class="err">{{ error }}</p>{% endif %}
-
-  <div class="drop" style="margin-top:24px">
-    <b>Choose a spreadsheet</b>
-    <span>.xlsx or .csv &middot; long or wide layout &middot; up to about 1,000 rows</span>
-    <p><input type="file" name="file" accept=".xlsx,.csv" required></p>
-  </div>
-  <p class="note" style="margin-top:8px">
-    Not sure of the format? Download a sample:
-    <a href="/sample/long.csv">long</a> &middot;
-    <a href="/sample/wide.csv">wide</a>
-  </p>
-
-  <p style="margin-top:20px">
-    <label class="label" for="layout">LAYOUT</label>
-    <select name="layout" id="layout">
-      <option value="">Detect automatically</option>
-      <option value="long">Force long: one row per campaign-month</option>
-      <option value="wide">Force wide: months across the top</option>
-    </select>
-  </p>
-
-  <div class="foot" style="margin-top:24px">
-    <span class="note">Nothing is written to ServiceTitan until you approve the preview.</span>
-    <button class="primary" type="submit">Resolve campaign names</button>
-  </div>
-</form>
-
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
 {% if result %}
 <div class="card">
   <p><b>{{ filename }}</b> &mdash; <span class="badge create">{{ result.layout|upper }} LAYOUT</span></p>
-  <p class="sub">{{ result.rows|length }} rows &middot; {{ result.errors|length }} skipped</p>
+  <p class="sub">{{ result.rows|length }} rows &middot; {{ result.errors|length }} skipped &middot; tenant {{ selected_tenant }}</p>
   <table>
     <tr><th>SPREADSHEET COLUMN</th><th>MAPS TO</th></tr>
     {% for source, target in result.column_mapping.items() %}
@@ -59,11 +21,54 @@
   </table>
   {% endif %}
   <div class="foot" style="margin-top:20px">
-    <span class="note">Wrong layout? Re-upload with the override set.</span>
+    <span class="note">Mapping look right? Continue to match these names to ServiceTitan campaigns.</span>
     <form method="post" action="/resolve/{{ session_id }}">
       <button class="primary" type="submit">Resolve campaign names</button>
     </form>
   </div>
 </div>
+<p class="label">WRONG FILE OR LAYOUT? UPLOAD AGAIN</p>
 {% endif %}
+
+<form method="post" action="/upload" enctype="multipart/form-data">
+  <p class="label">TENANT</p>
+  <div class="chips">
+    {% for name in tenants %}
+    <label class="chip">
+      <input type="radio" name="tenant" value="{{ name }}"
+             {% if (selected_tenant and name == selected_tenant) or (not selected_tenant and loop.first) %}checked{% endif %}>{{ name }}
+    </label>
+    {% endfor %}
+  </div>
+
+
+  <div class="drop" style="margin-top:24px">
+    <b>Choose a spreadsheet</b>
+    <span>.xlsx or .csv &middot; long or wide layout &middot; up to about 1,000 rows</span>
+    <p><input type="file" name="file" accept=".xlsx,.csv,.tsv,.txt"></p>
+  </div>
+  <p class="label" style="margin-top:20px">OR PASTE ROWS</p>
+  <textarea name="pasted" rows="6" spellcheck="false"
+            placeholder="Copy cells straight out of Excel or Google Sheets, header row included.&#10;Campaign&#9;Month&#9;Total Spend&#10;Google&#9;2026-09&#9;2500">{{ pasted or '' }}</textarea>
+  <p class="note" style="margin-top:6px">Tabs or commas both work. A chosen file takes priority over pasted rows.</p>
+  <p class="note" style="margin-top:8px">
+    Not sure of the format? Download a sample:
+    <a href="/sample/long.csv">long</a> &middot;
+    <a href="/sample/wide.csv">wide</a>
+  </p>
+
+  <p style="margin-top:20px">
+    <label class="label" for="layout">LAYOUT</label>
+    <select name="layout" id="layout">
+      <option value="" {% if not selected_layout %}selected{% endif %}>Detect automatically</option>
+      <option value="long" {% if selected_layout == 'long' %}selected{% endif %}>Force long: one row per campaign-month</option>
+      <option value="wide" {% if selected_layout == 'wide' %}selected{% endif %}>Force wide: months across the top</option>
+    </select>
+  </p>
+
+  <div class="foot" style="margin-top:24px">
+    <span class="note">This only reads the file. Nothing is written to ServiceTitan until you approve the preview.</span>
+    <button class="primary" type="submit">Check spreadsheet</button>
+  </div>
+</form>
 {% endblock %}

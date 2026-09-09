@@ -114,6 +114,61 @@ def test_upload_creates_a_session_and_reports_detection(client):
     assert "monthly_total" in response.text
 
 
+def test_upload_screen_has_one_resolve_button_and_keeps_the_choices(client):
+    """The first button reads the file; only the result card resolves names.
+
+    Before this, both buttons said "Resolve campaign names", so the operator
+    had to click the same label twice to reach step 2.
+    """
+    before = client.get("/")
+    assert before.text.count("Resolve campaign names") == 0
+    assert "Check spreadsheet" in before.text
+
+    response = client.post(
+        "/upload",
+        data={"tenant": "acme_east", "layout": "long"},
+        files={"file": ("spend.xlsx", _xlsx(), "application/octet-stream")},
+    )
+
+    assert response.status_code == 200
+    assert response.text.count("Resolve campaign names") == 1
+    session = next(iter(SESSIONS.values()))
+    assert f'action="/resolve/{session.id}"' in response.text
+    # The re-upload form remembers what was submitted instead of resetting.
+    assert 'value="acme_east"\n             checked' in response.text
+    assert '<option value="long" selected>' in response.text
+
+
+def test_pasted_rows_create_a_session_without_a_file(client):
+    response = client.post(
+        "/upload",
+        data={"tenant": "acme_east", "pasted": "Campaign\tMonth\tSpend\nYelp\t2026-02\t1860\n"},
+    )
+
+    assert response.status_code == 200
+    session = next(iter(SESSIONS.values()))
+    assert session.filename == "pasted rows"
+    assert session.parse_result.rows[0].campaign_name == "Yelp"
+    assert "LONG LAYOUT" in response.text
+
+
+def test_failed_paste_is_echoed_back_for_correction(client):
+    response = client.post(
+        "/upload", data={"tenant": "acme_east", "pasted": "Campaign\tNotes\nYelp\thi\n"}
+    )
+
+    assert response.status_code == 400
+    assert "Campaign\tNotes" in response.text
+
+
+def test_upload_with_neither_file_nor_paste_is_a_clear_400(client):
+    response = client.post("/upload", data={"tenant": "acme_east", "pasted": "   "})
+
+    assert response.status_code == 400
+    assert "Choose a spreadsheet or paste rows" in response.text
+    assert SESSIONS == {}
+
+
 def test_upload_rejects_an_unknown_tenant(client):
     response = client.post(
         "/upload",

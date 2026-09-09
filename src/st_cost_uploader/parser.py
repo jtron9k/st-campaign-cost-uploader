@@ -74,10 +74,21 @@ def detect_layout(headers: list[object]) -> str:
     return "wide" if period_columns >= MIN_PERIOD_COLUMNS_FOR_WIDE else "long"
 
 
+def _delimited_rows(text: str) -> list[list[object]]:
+    """Split delimited text into rows, accepting tabs or commas.
+
+    Rows copied out of Excel or Google Sheets arrive tab-separated, while a
+    CSV opened in a text editor is comma-separated. A tab anywhere in the
+    text wins, because a campaign name may legitimately contain a comma
+    ("Search, Google") but never a tab.
+    """
+    delimiter = "\t" if "\t" in text else ","
+    return [list(r) for r in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
 def _read_rows(data: bytes, filename: str) -> list[list[object]]:
-    if filename.lower().endswith(".csv"):
-        text = data.decode("utf-8-sig")
-        return [list(r) for r in csv.reader(io.StringIO(text))]
+    if filename.lower().endswith((".csv", ".tsv", ".txt")):
+        return _delimited_rows(data.decode("utf-8-sig"))
 
     workbook = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
     try:
@@ -193,7 +204,18 @@ def parse_workbook(data: bytes, filename: str, layout: str | None = None) -> Par
 
     layout: pass "long" or "wide" to override detection. None auto-detects.
     """
-    raw_rows = _read_rows(data, filename)
+    return _parse_rows(_read_rows(data, filename), layout)
+
+
+def parse_text(text: str, layout: str | None = None) -> ParseResult:
+    """Read rows pasted from a spreadsheet or CSV, header row first.
+
+    Same result as parse_workbook; only the source differs.
+    """
+    return _parse_rows(_delimited_rows(text.lstrip("\ufeff")), layout)
+
+
+def _parse_rows(raw_rows: list[list[object]], layout: str | None) -> ParseResult:
     # Capture each row's real 1-based spreadsheet line before filtering out
     # blanks, so that reported source_row values always match the line the
     # marketer would see in their own spreadsheet, blank rows included.

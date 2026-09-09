@@ -5,7 +5,13 @@ from decimal import Decimal
 import pytest
 from openpyxl import Workbook
 
-from st_cost_uploader.parser import detect_layout, parse_period, parse_workbook
+from st_cost_uploader.parser import (
+    ParserError,
+    detect_layout,
+    parse_period,
+    parse_text,
+    parse_workbook,
+)
 
 
 def _xlsx(rows: list[list]) -> bytes:
@@ -133,6 +139,26 @@ def test_csv_is_supported():
     result = parse_workbook(csv, "spend.csv")
     assert result.layout == "long"
     assert result.rows[0].monthly_total == Decimal("1860.00")
+
+
+def test_pasted_tab_separated_rows_parse_like_a_sheet():
+    text = "Campaign\tMonth\tSpend\nSearch, Google\t2026-02\t1,860.00\n"
+    result = parse_text(text)
+    assert result.layout == "long"
+    assert result.rows[0].campaign_name == "Search, Google"
+    assert result.rows[0].monthly_total == Decimal("1860.00")
+
+
+def test_pasted_comma_separated_rows_parse_like_a_csv():
+    text = "\ufeffCampaign,2026-01,2026-02\nYelp,100,200\n"
+    result = parse_text(text)
+    assert result.layout == "wide"
+    assert [r.monthly_total for r in result.rows] == [Decimal("100"), Decimal("200")]
+
+
+def test_pasted_blank_text_raises():
+    with pytest.raises(ParserError):
+        parse_text("  \n\n")
 
 
 def test_empty_file_raises():

@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "uploader",
-      "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "uvicorn", "st_cost_uploader.web.app:app", "--port", "8000"],
-      "port": 8000
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "uv run uvicorn st_cost_uploader.web.app:app --port ${PORT:-8000}"],
+      "port": 8000,
+      "autoPort": true
     }
   ]
 }

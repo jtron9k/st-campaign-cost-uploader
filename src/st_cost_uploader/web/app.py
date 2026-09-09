@@ -29,7 +29,7 @@ from st_cost_uploader.models import (
     WriteOutcome,
 )
 from st_cost_uploader.normalize import normalize_name
-from st_cost_uploader.parser import ParserError, parse_workbook
+from st_cost_uploader.parser import ParserError, parse_text, parse_workbook
 from st_cost_uploader.planner import plan as build_plan
 from st_cost_uploader.resolver import resolve as resolve_names
 from st_cost_uploader.samples import sample_csv
@@ -117,6 +117,8 @@ def _service_titan_error(
             "result": session.parse_result,
             "filename": session.filename,
             "session_id": session.id,
+            "selected_tenant": session.tenant,
+            "selected_layout": session.parse_result.layout,
         },
         status_code=502,
     )
@@ -149,7 +151,8 @@ async def upload(
     request: Request,
     tenant: str = Form(...),
     layout: str = Form(""),
-    file: UploadFile = File(...),  # noqa: B008 - FastAPI's required DI idiom, not a mutable default
+    pasted: str = Form(""),
+    file: UploadFile | None = File(None),  # noqa: B008 - FastAPI's DI idiom, not a mutable default
 ) -> HTMLResponse:
     tenants, config_error = _tenant_options()
 
@@ -157,7 +160,14 @@ async def upload(
         return TEMPLATES.TemplateResponse(
             request,
             "upload.html",
-            {"step": 1, "tenants": tenants, "error": message},
+            {
+                "step": 1,
+                "tenants": tenants,
+                "error": message,
+                "selected_tenant": tenant if tenant in tenants else None,
+                "selected_layout": layout,
+                "pasted": pasted,
+            },
             status_code=400,
         )
 
@@ -167,9 +177,21 @@ async def upload(
         # wrong place.
         return fail(config_error or f"'{tenant}' is not a configured tenant.")
 
+    # A file wins when both arrive, since choosing one is a deliberate act
+    # and stray whitespace in the textarea is not.
+    data = await file.read() if file is not None else b""
+    if data:
+        filename = file.filename or "upload.xlsx"  # type: ignore[union-attr]
+    elif pasted.strip():
+        filename = "pasted rows"
+    else:
+        return fail("Choose a spreadsheet or paste rows first.")
+
     try:
-        result = parse_workbook(
-            await file.read(), file.filename or "upload.xlsx", layout or None
+        result = (
+            parse_workbook(data, filename, layout or None)
+            if data
+            else parse_text(pasted, layout or None)
         )
     except ParserError as exc:
         return fail(str(exc))
@@ -179,7 +201,7 @@ async def upload(
     session = UploadSession(
         id=uuid.uuid4().hex,
         tenant=tenant,
-        filename=file.filename or "upload.xlsx",
+        filename=filename,
         parse_result=result,
     )
     SESSIONS[session.id] = session
@@ -193,6 +215,8 @@ async def upload(
             "result": result,
             "filename": session.filename,
             "session_id": session.id,
+            "selected_tenant": tenant,
+            "selected_layout": layout,
         },
     )
 
