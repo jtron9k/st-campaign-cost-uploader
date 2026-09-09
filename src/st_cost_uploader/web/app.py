@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 from st_cost_uploader.aliases import AliasStore
 from st_cost_uploader.audit import AuditLog
-from st_cost_uploader.client import ServiceTitanClient
+from st_cost_uploader.client import ServiceTitanClient, ServiceTitanError
 from st_cost_uploader.config import ConfigError, load_tenants
 from st_cost_uploader.models import (
     Action,
@@ -92,6 +92,33 @@ def _render_resolve(request: Request, session: UploadSession, campaigns: list[Ca
             },
             "all_campaigns": sorted(campaigns, key=lambda c: c.name),
         },
+    )
+
+
+def _service_titan_error(
+    request: Request, session: UploadSession, exc: ServiceTitanError
+) -> HTMLResponse:
+    """Render the upload screen with a ServiceTitan connectivity error.
+
+    Both resolve and preview call ServiceTitan before they can render
+    anything of their own, so a token or network failure there has nothing
+    to show on their own templates. The upload screen already carries a
+    parsed session forward (`result`/`filename`/`session_id`), so landing
+    back on it lets the operator retry without re-uploading the file.
+    """
+    tenants, _ = _tenant_options()
+    return TEMPLATES.TemplateResponse(
+        request,
+        "upload.html",
+        {
+            "step": 1,
+            "tenants": tenants,
+            "error": str(exc),
+            "result": session.parse_result,
+            "filename": session.filename,
+            "session_id": session.id,
+        },
+        status_code=502,
     )
 
 
@@ -176,6 +203,8 @@ async def resolve_screen(request: Request, session_id: str) -> HTMLResponse:
     client = get_client(session.tenant)
     try:
         campaigns = await client.list_campaigns()
+    except ServiceTitanError as exc:
+        return _service_titan_error(request, session, exc)
     finally:
         await client.aclose()
 
@@ -254,6 +283,8 @@ async def preview_screen(request: Request, session_id: str) -> HTMLResponse:
     client = get_client(session.tenant)
     try:
         existing = await client.list_costs_for_campaigns(resolved_ids)
+    except ServiceTitanError as exc:
+        return _service_titan_error(request, session, exc)
     finally:
         await client.aclose()
 

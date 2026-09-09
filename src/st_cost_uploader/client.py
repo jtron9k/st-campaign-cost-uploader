@@ -80,8 +80,8 @@ class ServiceTitanClient:
         if response.status_code != 200:
             raise ServiceTitanError(
                 f"Could not authenticate with ServiceTitan for tenant "
-                f"'{self._config.name}' (HTTP {response.status_code}). "
-                "Check the client ID, secret, and tenant ID in .env."
+                f"'{self._config.name}' (HTTP {response.status_code}): "
+                f"{response.text}. Check the client ID, secret, and tenant ID in .env."
             )
 
         payload = response.json()

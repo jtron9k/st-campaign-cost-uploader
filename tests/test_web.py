@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
+from st_cost_uploader.client import ServiceTitanError
 from st_cost_uploader.models import Campaign, CostRecord
 from st_cost_uploader.web.app import SESSIONS, app
 
@@ -184,6 +185,24 @@ class FakeSTClient:
         pass
 
 
+class RaisingSTClient:
+    """Stands in for a tenant whose ServiceTitan credentials don't work: every
+    call that would hit the network raises the same error the real client
+    raises on a non-200 token response."""
+
+    def __init__(self, message="Could not authenticate with ServiceTitan"):
+        self._message = message
+
+    async def list_campaigns(self):
+        raise ServiceTitanError(self._message)
+
+    async def list_costs_for_campaigns(self, ids):
+        raise ServiceTitanError(self._message)
+
+    async def aclose(self):
+        pass
+
+
 @pytest.fixture
 def fake_st(monkeypatch, tmp_path):
     from st_cost_uploader.web import app as web
@@ -296,6 +315,35 @@ def test_one_confirmation_resolves_every_row_with_the_same_name(client, fake_st)
     plans = SESSIONS[sid].plans
     assert {(p.year, p.month) for p in plans} == {(2026, 1), (2026, 2), (2026, 3)}
     assert SESSIONS[sid].unresolved == []
+
+
+def test_resolve_surfaces_a_service_titan_auth_failure_instead_of_500(client, monkeypatch):
+    from st_cost_uploader.web import app as web
+
+    message = "Could not authenticate with ServiceTitan for tenant 'northwind' (HTTP 400): {\"error\":\"invalid_client\"}."
+    monkeypatch.setattr(web, "get_client", lambda tenant: RaisingSTClient(message))
+    sid = _start(client)
+
+    response = client.post(f"/resolve/{sid}")
+
+    assert response.status_code == 502
+    assert "invalid_client" in response.text
+    # The parsed upload survives the failure, so the operator can retry
+    # (after fixing .env) without re-uploading the file.
+    assert f'action="/resolve/{sid}"' in response.text
+
+
+def test_preview_surfaces_a_service_titan_failure_instead_of_500(client, fake_st, monkeypatch):
+    from st_cost_uploader.web import app as web
+
+    sid = _start(client)
+    client.post(f"/resolve/{sid}")  # exact match on "Yelp" resolves without a confirm step
+
+    monkeypatch.setattr(web, "get_client", lambda tenant: RaisingSTClient("network unreachable"))
+    response = client.post(f"/preview/{sid}")
+
+    assert response.status_code == 502
+    assert "network unreachable" in response.text
 
 
 def test_propagation_never_overrides_a_row_the_operator_decided_differently(
