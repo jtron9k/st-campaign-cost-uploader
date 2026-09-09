@@ -187,12 +187,12 @@ class ServiceTitanClient:
             self._tenant_path("costs"),
             json_body=self._cost_body(campaign_id, year, month, daily_cost),
         )
-        # Verified against production 2026-08-13 (tenant acme_east,
-        # campaign 1000002, 2026-11): POST's response carries NO id. The
+        # Verified against production 2026-08-13 (one live tenant,
+        # a campaign with no prior records, 2026-11): POST's response carries NO id. The
         # record was genuinely created -- a follow-up read returned it as
-        # 500000004 -- but nothing in the response body names it, so this
+        # with a real id -- but nothing in the response body names it, so this
         # returns 0. Contrast PATCH, whose response is {"id": ...} (verified
-        # 2026-08-12 on record 500000001).
+        # 2026-08-12 on a live record).
         #
         # A 0 therefore means "no id in the response", which is now the
         # expected case, and never "the write failed" -- a real failure
@@ -206,8 +206,8 @@ class ServiceTitanClient:
     async def update_cost(
         self, cost_id: int, campaign_id: int, year: int, month: int, daily_cost: Decimal
     ) -> None:
-        # Verified against production (2026-08-12, tenant acme_east,
-        # record 500000001, supervised write + restore): PATCH accepts and
+        # Verified against production (2026-08-12, one live tenant,
+        # one live record, supervised write + restore): PATCH accepts and
         # requires only {"dailyCost": ...}. campaign_id/year/month identify
         # which record this is, and are accepted here only to keep the
         # signature stable for callers (Task 12) -- do NOT add them back

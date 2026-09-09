@@ -87,7 +87,7 @@ logs/                        Gitignored. Audit JSONL.
 
 ### Task 1: Confirm the cost update verb against the live API
 
-**This task writes to a production ServiceTitan tenant. Stop and get Justin's explicit approval before executing step 3.** Do not proceed without it.
+**This task writes to a production ServiceTitan tenant. Stop and get the operator's explicit approval before executing step 3.** Do not proceed without it.
 
 This is the one unknown in the spec. Everything in Task 9 depends on the answer, so it resolves first.
 
@@ -100,7 +100,7 @@ This is the one unknown in the spec. Everything in Task 9 depends on the answer,
 
 - [ ] **Step 1: Pick a target that is currently zero**
 
-Use the `servicetitan-local` MCP server, tenant `acme_east`. Campaign `1000001` has records back to 2022-01, all at `dailyCost: 0.0`.
+Use the `servicetitan-local` MCP server, one live tenant. Campaign `1000001` has records back to 2022-01, all at `dailyCost: 0.0`.
 
 Read the specific record to confirm its current state:
 
@@ -115,7 +115,7 @@ Expected: `{"id": 500000001, "year": 2022, "month": 1, "dailyCost": 0.0, "campai
 
 Record the exact response. If `dailyCost` is not `0.0`, stop and pick a different record that is, because this task restores the prior value and a non-zero starting point means someone is using it.
 
-- [ ] **Step 2: Get Justin's approval**
+- [ ] **Step 2: Get the operator's approval**
 
 Show him the target record and the exact request you are about to send. Wait for a clear yes. This is a production tenant with real business data.
 
@@ -131,7 +131,7 @@ mcp__servicetitan-local__servicetitan_api_call
 
 Record the status and response body verbatim.
 
-If PATCH returns 404 or 405, retry with `PUT` and the full body `{"campaignId": 1000001, "year": 2022, "month": 1, "dailyCost": 1.23}`. If both fail, record both failures and stop; the write path needs a different design and that is a decision for Justin, not a workaround.
+If PATCH returns 404 or 405, retry with `PUT` and the full body `{"campaignId": 1000001, "year": 2022, "month": 1, "dailyCost": 1.23}`. If both fail, record both failures and stop; the write path needs a different design and that is a decision for the operator, not a workaround.
 
 - [ ] **Step 4: Re-read to confirm the write landed**
 
@@ -4169,7 +4169,7 @@ Replace the "Immediate next action" section with the current state: the build is
 
 - [ ] **Step 8: Manual end-to-end check against a real tenant**
 
-**This writes to production. Get Justin's approval before running it.**
+**This writes to production. Get the operator's approval before running it.**
 
 Build a small spreadsheet with two or three campaign-months that currently read `0.0`, run the app, walk all four screens, and confirm:
 

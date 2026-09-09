@@ -12,7 +12,7 @@ This tool reads a spreadsheet of campaign spend and writes it to ServiceTitan th
 
 ## Users and delivery
 
-A local web app, run by Justin and the internal marketing team. Each operator runs it on their own machine.
+A local web app, run by the marketing team. Each operator runs it on their own machine.
 
 **Stack:** Python with FastAPI, server-rendered HTML with htmx. No build step, one command to start.
 
@@ -22,14 +22,14 @@ The engine is a plain Python package with no web dependency. FastAPI is a thin l
 
 ## Verified API behavior
 
-The facts in `CLAUDE.md` govern. Confirmed on 2026-08-12 against tenant `acme_east`:
+The facts in `CLAUDE.md` govern. Confirmed on 2026-08-12 against one live tenant:
 
 - A cost record is `{id, year, month, dailyCost, campaignId}`, scoped to one `(campaignId, year, month)` triple. No date-range or weekly granularity exists.
 - `dailyCost` stores to the cent. Across 500 live records there were 68 distinct values and none carried more than two decimal places.
 - `GET /marketing/v2/tenant/{tenant_id}/costs/{id}` returns a single record, so the single-cost resource path exists.
 - ServiceTitan's own help documentation states the conversion as total campaign cost divided by the number of days the campaign runs, matching the derivation in `CLAUDE.md`.
 
-One item stays unresolved: the update verb. The developer portal is an authenticated single-page app and cannot be read without a session. Convention across ServiceTitan's v2 API and the confirmed `/costs/{id}` resource path both point to `PATCH /marketing/v2/tenant/{tenant_id}/costs/{id}`. Confirming it requires a real write, so it becomes the first task in the implementation plan, run against a campaign-month currently reading `0.0`, with Justin's approval, writing a known value and re-reading to confirm.
+One item stays unresolved: the update verb. The developer portal is an authenticated single-page app and cannot be read without a session. Convention across ServiceTitan's v2 API and the confirmed `/costs/{id}` resource path both point to `PATCH /marketing/v2/tenant/{tenant_id}/costs/{id}`. Confirming it requires a real write, so it becomes the first task in the implementation plan, run against a campaign-month currently reading `0.0`, with the operator's approval, writing a known value and re-reading to confirm.
 
 ## Architecture
 

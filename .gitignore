@@ -12,12 +12,16 @@ secrets.*
 *.local.xlsx
 *.local.csv
 
-# Session handoff. Names live tenants, campaign ids, and real spend figures,
-# so it stays local. Keep the file; just never commit it.
+# Session handoff and design mockups. Both name live tenants, campaign ids,
+# and real spend figures, so they stay local. Keep them; just never commit them.
 /next_steps.md
+*.pen
+
+# Per-tenant alias maps hold a real customer's campaign names. Share them
+# with your team out of band, not through this public repo.
+/aliases/
 
 # Audit log of writes to production tenants. Local record, not shared history.
-# Note: /aliases/ is deliberately NOT ignored. It holds no secrets and the team shares it.
 /logs/
 
 # Claude Code local overrides

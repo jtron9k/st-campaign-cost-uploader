@@ -2,16 +2,16 @@
 
 This exists so live data can be inspected from any environment that has
 credentials, without depending on the servicetitan-local MCP server. It is
-the tool used to verify a write landed, per next_steps.md's "Still owed".
+the tool used to verify a write landed, after the live end-to-end run.
 
 Read-only by construction: it calls only the client's GET methods, and
 never imports create_cost or update_cost. Keep it that way. Writes belong
 in the app, behind the preview gate, where they are audited.
 
     uv run python scripts/st_probe.py tenants
-    uv run python scripts/st_probe.py campaigns acme_east --match google
-    uv run python scripts/st_probe.py costs acme_east --campaign 1000001
-    uv run python scripts/st_probe.py cost acme_east --id 500000001
+    uv run python scripts/st_probe.py campaigns <tenant> --match google
+    uv run python scripts/st_probe.py costs <tenant> --campaign <campaign_id>
+    uv run python scripts/st_probe.py cost <tenant> --id <cost_id>
 """
 
 from __future__ import annotations
