@@ -11,7 +11,7 @@ ServiceTitan's built-in interface for entering marketing campaign costs takes on
 ## Session start
 
 1. Run `git status --short --branch` and `git remote -v`, then `git pull --ff-only`. Origin is `jtron9k/st-campaign-cost-uploader`.
-2. Read `next_steps.md`. It is the current handoff. Verify its claims against the repository and update it before ending a session with material work outstanding.
+2. Read `next_steps.md` if present. It is the local, gitignored handoff (it names live tenants and spend), so a fresh clone will not have it. Verify its claims against the repository and update it before ending a session with material work outstanding.
 
 ## Commands
 

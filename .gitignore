@@ -12,6 +12,10 @@ secrets.*
 *.local.xlsx
 *.local.csv
 
+# Session handoff. Names live tenants, campaign ids, and real spend figures,
+# so it stays local. Keep the file; just never commit it.
+/next_steps.md
+
 # Audit log of writes to production tenants. Local record, not shared history.
 # Note: /aliases/ is deliberately NOT ignored. It holds no secrets and the team shares it.
 /logs/
